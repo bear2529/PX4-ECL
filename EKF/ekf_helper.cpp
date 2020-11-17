@@ -226,9 +226,6 @@ void Ekf::resetHorizontalPositionTo(const Vector2f &new_horz_pos)
 // Reset height state using the last height measurement
 void Ekf::resetHeight()
 {
-	// Get the most recent GPS data
-	const gpsSample &gps_newest = _gps_buffer.get_newest();
-
 	// store the current vertical position and velocity for reference so we can calculate and publish the reset amount
 	const float old_vert_pos = _state.pos(2);
 	bool vert_pos_reset = false;
@@ -245,15 +242,16 @@ void Ekf::resetHeight()
 
 		vert_pos_reset = true;
 
-		// reset the baro offset which is subtracted from the baro reading if we need to use it as a backup
-		const baroSample &baro_newest = _baro_buffer.get_newest();
-		_baro_hgt_offset = baro_newest.hgt + _state.pos(2);
+		if (_baro_buffer) {
+			// reset the baro offset which is subtracted from the baro reading if we need to use it as a backup
+			const baroSample &baro_newest = _baro_buffer->get_newest();
+			_baro_hgt_offset = baro_newest.hgt + _state.pos(2);
+		}
 
 	} else if (_control_status.flags.baro_hgt) {
 		// initialize vertical position with newest baro measurement
-		const baroSample &baro_newest = _baro_buffer.get_newest();
-
-		if (!_baro_hgt_faulty) {
+		if (!_baro_hgt_faulty && _baro_buffer) {
+			const baroSample &baro_newest = _baro_buffer->get_newest();
 			_state.pos(2) = -baro_newest.hgt + _baro_hgt_offset;
 
 			// the state variance is the same as the observation
@@ -267,7 +265,10 @@ void Ekf::resetHeight()
 
 	} else if (_control_status.flags.gps_hgt) {
 		// initialize vertical position and velocity with newest gps measurement
-		if (!_gps_hgt_intermittent) {
+		if (!_gps_hgt_intermittent && _gps_buffer) {
+			// Get the most recent GPS data
+			const gpsSample &gps_newest = _gps_buffer->get_newest();
+
 			_state.pos(2) = _hgt_sensor_offset - gps_newest.hgt + _gps_alt_ref;
 
 			// the state variance is the same as the observation
@@ -275,35 +276,40 @@ void Ekf::resetHeight()
 
 			vert_pos_reset = true;
 
-			// reset the baro offset which is subtracted from the baro reading if we need to use it as a backup
-			const baroSample &baro_newest = _baro_buffer.get_newest();
-			_baro_hgt_offset = baro_newest.hgt + _state.pos(2);
+			if (_baro_buffer) {
+				// reset the baro offset which is subtracted from the baro reading if we need to use it as a backup
+				const baroSample &baro_newest = _baro_buffer->get_newest();
+				_baro_hgt_offset = baro_newest.hgt + _state.pos(2);
+			}
 
 		} else {
 			// TODO: reset to last known gps based estimate
 		}
 
 	} else if (_control_status.flags.ev_hgt) {
-		// initialize vertical position with newest measurement
-		const extVisionSample &ev_newest = _ext_vision_buffer.get_newest();
+		if (_ext_vision_buffer) {
+			// initialize vertical position with newest measurement
+			const extVisionSample &ev_newest = _ext_vision_buffer->get_newest();
 
-		// use the most recent data if it's time offset from the fusion time horizon is smaller
-		const int32_t dt_newest = ev_newest.time_us - _imu_sample_delayed.time_us;
-		const int32_t dt_delayed = _ev_sample_delayed.time_us - _imu_sample_delayed.time_us;
+			// use the most recent data if it's time offset from the fusion time horizon is smaller
+			const int32_t dt_newest = ev_newest.time_us - _imu_sample_delayed.time_us;
+			const int32_t dt_delayed = _ev_sample_delayed.time_us - _imu_sample_delayed.time_us;
 
-		vert_pos_reset = true;
+			vert_pos_reset = true;
 
-		if (std::abs(dt_newest) < std::abs(dt_delayed)) {
-			_state.pos(2) = ev_newest.pos(2);
+			if (std::abs(dt_newest) < std::abs(dt_delayed)) {
+				_state.pos(2) = ev_newest.pos(2);
 
-		} else {
-			_state.pos(2) = _ev_sample_delayed.pos(2);
+			} else {
+				_state.pos(2) = _ev_sample_delayed.pos(2);
+			}
 		}
 	}
 
 	// reset the vertical velocity state
-	if (_control_status.flags.gps && !_gps_hgt_intermittent) {
+	if (_control_status.flags.gps && !_gps_hgt_intermittent && _gps_buffer) {
 		// If we are using GPS, then use it to reset the vertical velocity
+		const gpsSample &gps_newest = _gps_buffer->get_newest();
 		resetVerticalVelocityTo(gps_newest.vel(2));
 
 		// the state variance is the same as the observation
@@ -1230,10 +1236,10 @@ Vector3f Ekf::getVisionVelocityInEkfFrame() const
 
 	// rotate measurement into correct earth frame if required
 	switch(_ev_sample_delayed.vel_frame) {
-		case BODY_FRAME_FRD:
+		case velocity_frame_t::BODY_FRAME_FRD:
 			vel = _R_to_earth * (_ev_sample_delayed.vel - vel_offset_body);
 			break;
-		case LOCAL_FRAME_FRD:
+		case velocity_frame_t::LOCAL_FRAME_FRD:
 			const Vector3f vel_offset_earth = _R_to_earth * vel_offset_body;
 			if (_params.fusion_mode & MASK_ROTATE_EV)
 			{
@@ -1253,11 +1259,11 @@ Vector3f Ekf::getVisionVelocityVarianceInEkfFrame() const
 
 	// rotate measurement into correct earth frame if required
 	switch(_ev_sample_delayed.vel_frame) {
-		case BODY_FRAME_FRD:
+		case velocity_frame_t::BODY_FRAME_FRD:
 			ev_vel_cov = _R_to_earth * ev_vel_cov * _R_to_earth.transpose();
 			break;
 
-		case LOCAL_FRAME_FRD:
+		case velocity_frame_t::LOCAL_FRAME_FRD:
 			if(_params.fusion_mode & MASK_ROTATE_EV)
 			{
 				ev_vel_cov = _R_ev_to_ekf * ev_vel_cov * _R_ev_to_ekf.transpose();

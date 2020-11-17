@@ -55,7 +55,10 @@ using matrix::Vector2f;
 using matrix::Vector3f;
 using matrix::wrap_pi;
 
-enum velocity_frame_t {LOCAL_FRAME_FRD, BODY_FRAME_FRD};
+enum class velocity_frame_t : uint8_t {
+	LOCAL_FRAME_FRD = 1,
+	BODY_FRAME_FRD  = 3,
+};
 
 struct gps_message {
 	uint64_t time_usec;
@@ -132,11 +135,11 @@ struct airspeedSample {
 };
 
 struct flowSample {
-	uint8_t  quality;	///< quality indicator between 0 and 255
 	Vector2f flow_xy_rad;	///< measured delta angle of the image about the X and Y body axes (rad), RH rotation is positive
 	Vector3f gyro_xyz;	///< measured delta angle of the inertial frame about the body axes obtained from rate gyro measurements (rad), RH rotation is positive
 	float    dt;		///< amount of integration time (sec)
 	uint64_t time_us;	///< timestamp of the integration period leading edge (uSec)
+	uint8_t  quality;	///< quality indicator between 0 and 255
 };
 
 struct extVisionSample {
@@ -146,8 +149,8 @@ struct extVisionSample {
 	Vector3f posVar;	///< XYZ position variances (m**2)
 	Matrix3f velCov;	///< XYZ velocity covariances ((m/sec)**2)
 	float angVar;		///< angular heading variance (rad**2)
-	velocity_frame_t vel_frame = BODY_FRAME_FRD;
 	uint64_t time_us;	///< timestamp of the measurement (uSec)
+	velocity_frame_t vel_frame{velocity_frame_t::BODY_FRAME_FRD};
 };
 
 struct dragSample {
@@ -218,15 +221,14 @@ struct parameters {
 	int32_t sensor_interval_min_ms{20};		///< minimum time of arrival difference between non IMU sensor updates. Sets the size of the observation buffers. (mSec)
 
 	// measurement time delays
-	float min_delay_ms{0.0f};		///< Maximum time delay of any sensor used to increase buffer length to handle large timing jitter (mSec)
 	float mag_delay_ms{0.0f};		///< magnetometer measurement delay relative to the IMU (mSec)
 	float baro_delay_ms{0.0f};		///< barometer height measurement delay relative to the IMU (mSec)
 	float gps_delay_ms{110.0f};		///< GPS measurement delay relative to the IMU (mSec)
 	float airspeed_delay_ms{100.0f};	///< airspeed measurement delay relative to the IMU (mSec)
-	float flow_delay_ms{5.0f};		///< optical flow measurement delay relative to the IMU (mSec) - this is to the middle of the optical flow integration interval
+	float flow_delay_ms{20.0f};		///< optical flow measurement delay relative to the IMU (mSec) - this is to the middle of the optical flow integration interval
 	float range_delay_ms{5.0f};		///< range finder measurement delay relative to the IMU (mSec)
-	float ev_delay_ms{100.0f};		///< off-board vision measurement delay relative to the IMU (mSec)
-	float auxvel_delay_ms{0.0f};		///< auxiliary velocity measurement delay relative to the IMU (mSec)
+	float ev_delay_ms{175.0f};		///< off-board vision measurement delay relative to the IMU (mSec)
+	float auxvel_delay_ms{5.0f};		///< auxiliary velocity measurement delay relative to the IMU (mSec)
 
 	// input noise
 	float gyro_noise{1.5e-2f};		///< IMU angular rate noise used for covariance prediction (rad/sec)

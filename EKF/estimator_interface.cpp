@@ -45,6 +45,19 @@
 #include <ecl.h>
 #include <mathlib/mathlib.h>
 
+EstimatorInterface::~EstimatorInterface()
+{
+	delete _gps_buffer;
+	delete _mag_buffer;
+	delete _baro_buffer;
+	delete _range_buffer;
+	delete _airspeed_buffer;
+	delete _flow_buffer;
+	delete _ext_vision_buffer;
+	delete _drag_buffer;
+	delete _auxvel_buffer;
+}
+
 // Accumulate imu data and store to buffer at desired rate
 void EstimatorInterface::setIMUData(const imuSample &imu_sample)
 {
@@ -125,16 +138,17 @@ bool EstimatorInterface::checkIfVehicleAtRest(float dt, const imuSample &imu)
 
 void EstimatorInterface::setMagData(const magSample &mag_sample)
 {
-	if (!_initialised || _mag_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_mag_buffer.get_length() < _obs_buffer_length) {
-		_mag_buffer_fail = !_mag_buffer.allocate(_obs_buffer_length);
+	if (_mag_buffer == nullptr && !_control_status.flags.in_air) {
+		_mag_buffer = new RingBuffer<magSample>(_obs_buffer_length);
 
-		if (_mag_buffer_fail) {
+		if (_mag_buffer == nullptr || !_mag_buffer->valid()) {
+			delete _mag_buffer;
+			_mag_buffer = nullptr;
 			printBufferAllocationFailed("mag");
 			return;
 		}
@@ -159,7 +173,7 @@ void EstimatorInterface::setMagData(const magSample &mag_sample)
 
 		mag_sample_new.mag = _mag_data_sum / _mag_sample_count;
 
-		_mag_buffer.push(mag_sample_new);
+		_mag_buffer->push(mag_sample_new);
 
 		_mag_sample_count = 0;
 		_mag_data_sum.setZero();
@@ -169,16 +183,17 @@ void EstimatorInterface::setMagData(const magSample &mag_sample)
 
 void EstimatorInterface::setGpsData(const gps_message &gps)
 {
-	if (!_initialised || _gps_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_gps_buffer.get_length() < _obs_buffer_length) {
-		_gps_buffer_fail = !_gps_buffer.allocate(_obs_buffer_length);
+	if (_gps_buffer == nullptr && !_control_status.flags.in_air) {
+		_gps_buffer = new RingBuffer<gpsSample>(_obs_buffer_length);
 
-		if (_gps_buffer_fail) {
+		if (_gps_buffer == nullptr || !_gps_buffer->valid()) {
+			delete _gps_buffer;
+			_gps_buffer = nullptr;
 			printBufferAllocationFailed("GPS");
 			return;
 		}
@@ -227,22 +242,23 @@ void EstimatorInterface::setGpsData(const gps_message &gps)
 			gps_sample_new.pos(1) = 0.0f;
 		}
 
-		_gps_buffer.push(gps_sample_new);
+		_gps_buffer->push(gps_sample_new);
 	}
 }
 
 void EstimatorInterface::setBaroData(const baroSample &baro_sample)
 {
-	if (!_initialised || _baro_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_baro_buffer.get_length() < _obs_buffer_length) {
-		_baro_buffer_fail = !_baro_buffer.allocate(_obs_buffer_length);
+	if (_baro_buffer == nullptr && !_control_status.flags.in_air) {
+		_baro_buffer = new RingBuffer<baroSample>(_obs_buffer_length);
 
-		if (_baro_buffer_fail) {
+		if (_baro_buffer == nullptr || !_baro_buffer->valid()) {
+			delete _baro_buffer;
+			_baro_buffer = nullptr;
 			printBufferAllocationFailed("baro");
 			return;
 		}
@@ -268,7 +284,7 @@ void EstimatorInterface::setBaroData(const baroSample &baro_sample)
 		baro_sample_new.time_us -= _params.baro_delay_ms * 1000;
 		baro_sample_new.time_us -= FILTER_UPDATE_PERIOD_MS * 1000 / 2;
 
-		_baro_buffer.push(baro_sample_new);
+		_baro_buffer->push(baro_sample_new);
 
 		_baro_sample_count = 0;
 		_baro_alt_sum = 0.0f;
@@ -278,16 +294,17 @@ void EstimatorInterface::setBaroData(const baroSample &baro_sample)
 
 void EstimatorInterface::setAirspeedData(const airspeedSample &airspeed_sample)
 {
-	if (!_initialised || _airspeed_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_airspeed_buffer.get_length() < _obs_buffer_length) {
-		_airspeed_buffer_fail = !_airspeed_buffer.allocate(_obs_buffer_length);
+	if (_airspeed_buffer == nullptr && !_control_status.flags.in_air) {
+		_airspeed_buffer = new RingBuffer<airspeedSample>(_obs_buffer_length);
 
-		if (_airspeed_buffer_fail) {
+		if (_airspeed_buffer == nullptr || !_airspeed_buffer->valid()) {
+			delete _airspeed_buffer;
+			_airspeed_buffer = nullptr;
 			printBufferAllocationFailed("airspeed");
 			return;
 		}
@@ -302,22 +319,23 @@ void EstimatorInterface::setAirspeedData(const airspeedSample &airspeed_sample)
 		airspeed_sample_new.time_us -= _params.airspeed_delay_ms * 1000;
 		airspeed_sample_new.time_us -= FILTER_UPDATE_PERIOD_MS * 1000 / 2;
 
-		_airspeed_buffer.push(airspeed_sample_new);
+		_airspeed_buffer->push(airspeed_sample_new);
 	}
 }
 
 void EstimatorInterface::setRangeData(const rangeSample &range_sample)
 {
-	if (!_initialised || _range_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_range_buffer.get_length() < _obs_buffer_length) {
-		_range_buffer_fail = !_range_buffer.allocate(_obs_buffer_length);
+	if (_range_buffer == nullptr && !_control_status.flags.in_air) {
+		_range_buffer = new RingBuffer<rangeSample>(_obs_buffer_length);
 
-		if (_range_buffer_fail) {
+		if (_range_buffer == nullptr || !_range_buffer->valid()) {
+			delete _range_buffer;
+			_range_buffer = nullptr;
 			printBufferAllocationFailed("range");
 			return;
 		}
@@ -331,22 +349,23 @@ void EstimatorInterface::setRangeData(const rangeSample &range_sample)
 		range_sample_new.time_us -= _params.range_delay_ms * 1000;
 		range_sample_new.time_us -= FILTER_UPDATE_PERIOD_MS * 1000 / 2;
 
-		_range_buffer.push(range_sample_new);
+		_range_buffer->push(range_sample_new);
 	}
 }
 
 void EstimatorInterface::setOpticalFlowData(const flowSample &flow)
 {
-	if (!_initialised || _flow_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_flow_buffer.get_length() < _imu_buffer_length) {
-		_flow_buffer_fail = !_flow_buffer.allocate(_imu_buffer_length);
+	if (_flow_buffer == nullptr && !_control_status.flags.in_air) {
+		_flow_buffer = new RingBuffer<flowSample>(_imu_buffer_length);
 
-		if (_flow_buffer_fail) {
+		if (_flow_buffer == nullptr || !_flow_buffer->valid()) {
+			delete _flow_buffer;
+			_flow_buffer = nullptr;
 			printBufferAllocationFailed("flow");
 			return;
 		}
@@ -393,7 +412,7 @@ void EstimatorInterface::setOpticalFlowData(const flowSample &flow)
 
 			optflow_sample_new.dt = delta_time;
 
-			_flow_buffer.push(optflow_sample_new);
+			_flow_buffer->push(optflow_sample_new);
 		}
 	}
 }
@@ -401,16 +420,17 @@ void EstimatorInterface::setOpticalFlowData(const flowSample &flow)
 // set attitude and position data derived from an external vision system
 void EstimatorInterface::setExtVisionData(const extVisionSample &evdata)
 {
-	if (!_initialised || _ev_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_ext_vision_buffer.get_length() < _obs_buffer_length) {
-		_ev_buffer_fail = !_ext_vision_buffer.allocate(_obs_buffer_length);
+	if (_ext_vision_buffer == nullptr && !_control_status.flags.in_air) {
+		_ext_vision_buffer = new RingBuffer<extVisionSample>(_obs_buffer_length);
 
-		if (_ev_buffer_fail) {
+		if (_ext_vision_buffer == nullptr || !_ext_vision_buffer->valid()) {
+			delete _ext_vision_buffer;
+			_ext_vision_buffer = nullptr;
 			printBufferAllocationFailed("vision");
 			return;
 		}
@@ -425,22 +445,23 @@ void EstimatorInterface::setExtVisionData(const extVisionSample &evdata)
 		ev_sample_new.time_us -= _params.ev_delay_ms * 1000;
 		ev_sample_new.time_us -= FILTER_UPDATE_PERIOD_MS * 1000 / 2;
 
-		_ext_vision_buffer.push(ev_sample_new);
+		_ext_vision_buffer->push(ev_sample_new);
 	}
 }
 
 void EstimatorInterface::setAuxVelData(const auxVelSample &auxvel_sample)
 {
-	if (!_initialised || _auxvel_buffer_fail) {
+	if (!_initialised) {
 		return;
 	}
 
 	// Allocate the required buffer size if not previously done
-	// Do not retry if allocation has failed previously
-	if (_auxvel_buffer.get_length() < _obs_buffer_length) {
-		_auxvel_buffer_fail = !_auxvel_buffer.allocate(_obs_buffer_length);
+	if (_auxvel_buffer == nullptr && !_control_status.flags.in_air) {
+		_auxvel_buffer = new RingBuffer<auxVelSample>(_obs_buffer_length);
 
-		if (_auxvel_buffer_fail) {
+		if (_auxvel_buffer == nullptr || !_auxvel_buffer->valid()) {
+			delete _auxvel_buffer;
+			_auxvel_buffer = nullptr;
 			printBufferAllocationFailed("aux vel");
 			return;
 		}
@@ -455,7 +476,7 @@ void EstimatorInterface::setAuxVelData(const auxVelSample &auxvel_sample)
 		auxvel_sample_new.time_us -= _params.auxvel_delay_ms * 1000;
 		auxvel_sample_new.time_us -= FILTER_UPDATE_PERIOD_MS * 1000 / 2;
 
-		_auxvel_buffer.push(auxvel_sample_new);
+		_auxvel_buffer->push(auxvel_sample_new);
 	}
 }
 
@@ -463,14 +484,15 @@ void EstimatorInterface::setDragData(const imuSample &imu)
 {
 	// down-sample the drag specific force data by accumulating and calculating the mean when
 	// sufficient samples have been collected
-	if ((_params.fusion_mode & MASK_USE_DRAG) && !_drag_buffer_fail) {
+	if ((_params.fusion_mode & MASK_USE_DRAG)) {
 
 		// Allocate the required buffer size if not previously done
-		// Do not retry if allocation has failed previously
-		if (_drag_buffer.get_length() < _obs_buffer_length) {
-			_drag_buffer_fail = !_drag_buffer.allocate(_obs_buffer_length);
+		if (_drag_buffer == nullptr && !_control_status.flags.in_air) {
+			_drag_buffer = new RingBuffer<dragSample>(_obs_buffer_length);
 
-			if (_drag_buffer_fail) {
+			if (_drag_buffer == nullptr || !_drag_buffer->valid()) {
+				delete _drag_buffer;
+				_drag_buffer = nullptr;
 				printBufferAllocationFailed("drag");
 				return;
 			}
@@ -491,14 +513,14 @@ void EstimatorInterface::setDragData(const imuSample &imu)
 		}
 
 		// calculate and store means from accumulated values
-		if (_drag_sample_count >= min_sample_ratio) {
+		if (_drag_sample_count >= min_sample_ratio && _drag_buffer) {
 			// note conversion from accumulated delta velocity to acceleration
 			_drag_down_sampled.accelXY(0) /= _drag_sample_time_dt;
 			_drag_down_sampled.accelXY(1) /= _drag_sample_time_dt;
 			_drag_down_sampled.time_us /= _drag_sample_count;
 
 			// write to buffer
-			_drag_buffer.push(_drag_down_sampled);
+			_drag_buffer->push(_drag_down_sampled);
 
 			// reset accumulators
 			_drag_sample_count = 0;
@@ -512,34 +534,46 @@ void EstimatorInterface::setDragData(const imuSample &imu)
 bool EstimatorInterface::initialise_interface(uint64_t timestamp)
 {
 	// find the maximum time delay the buffers are required to handle
-	const uint16_t max_time_delay_ms = math::max(_params.mag_delay_ms,
-					     math::max(_params.range_delay_ms,
-					       math::max(_params.gps_delay_ms,
-						 math::max(_params.flow_delay_ms,
-						   math::max(_params.ev_delay_ms,
-						     math::max(_params.auxvel_delay_ms,
-						       math::max(_params.min_delay_ms,
-							 math::max(_params.airspeed_delay_ms,
-							 	     _params.baro_delay_ms))))))));
+	float max_time_delay_ms = math::max(_params.baro_delay_ms,
+					math::max(_params.auxvel_delay_ms,
+						_params.airspeed_delay_ms));
+
+	// mag mode
+	if (_params.mag_fusion_type != MAG_FUSE_TYPE_NONE) {
+		max_time_delay_ms = math::max(_params.mag_delay_ms, max_time_delay_ms);
+	}
+
+	// range aide or range height
+	if (_params.range_aid || (_params.vdist_sensor_type == VDIST_SENSOR_RANGE)) {
+		max_time_delay_ms = math::max(_params.range_delay_ms, max_time_delay_ms);
+	}
+
+	if (_params.fusion_mode & MASK_USE_GPS) {
+		max_time_delay_ms = math::max(_params.gps_delay_ms, max_time_delay_ms);
+	}
+
+	if (_params.fusion_mode & MASK_USE_OF) {
+		max_time_delay_ms = math::max(_params.flow_delay_ms, max_time_delay_ms);
+	}
+
+	if (_params.fusion_mode & (MASK_USE_EVPOS | MASK_USE_EVYAW | MASK_USE_EVVEL)) {
+		max_time_delay_ms = math::max(_params.ev_delay_ms, max_time_delay_ms);
+	}
 
 	// calculate the IMU buffer length required to accomodate the maximum delay with some allowance for jitter
-	_imu_buffer_length = (max_time_delay_ms / FILTER_UPDATE_PERIOD_MS) + 1;
+	_imu_buffer_length = roundf(max_time_delay_ms / FILTER_UPDATE_PERIOD_MS) + 1;
 
 	// set the observation buffer length to handle the minimum time of arrival between observations in combination
 	// with the worst case delay from current time to ekf fusion time
 	// allow for worst case 50% extension of the ekf fusion time horizon delay due to timing jitter
-	const uint16_t ekf_delay_ms = max_time_delay_ms + (int)(ceilf((float)max_time_delay_ms * 0.5f));
-	_obs_buffer_length = (ekf_delay_ms / _params.sensor_interval_min_ms) + 1;
+	const float ekf_delay_ms = max_time_delay_ms + ceilf(max_time_delay_ms * 0.5f);
+	_obs_buffer_length = roundf(ekf_delay_ms / _params.sensor_interval_min_ms) + 1;
 
 	// limit to be no longer than the IMU buffer (we can't process data faster than the EKF prediction rate)
 	_obs_buffer_length = math::min(_obs_buffer_length, _imu_buffer_length);
 
-	if (!(_imu_buffer.allocate(_imu_buffer_length) &&
-	      _output_buffer.allocate(_imu_buffer_length) &&
-	      _output_vert_buffer.allocate(_imu_buffer_length))) {
-
+	if (!_imu_buffer.allocate(_imu_buffer_length) || !_output_buffer.allocate(_imu_buffer_length) || !_output_vert_buffer.allocate(_imu_buffer_length)) {
 		printBufferAllocationFailed("");
-		unallocate_buffers();
 		return false;
 	}
 
@@ -551,22 +585,6 @@ bool EstimatorInterface::initialise_interface(uint64_t timestamp)
 	_fault_status.value = 0;
 
 	return true;
-}
-
-void EstimatorInterface::unallocate_buffers()
-{
-	_imu_buffer.unallocate();
-	_gps_buffer.unallocate();
-	_mag_buffer.unallocate();
-	_baro_buffer.unallocate();
-	_range_buffer.unallocate();
-	_airspeed_buffer.unallocate();
-	_flow_buffer.unallocate();
-	_ext_vision_buffer.unallocate();
-	_output_buffer.unallocate();
-	_output_vert_buffer.unallocate();
-	_drag_buffer.unallocate();
-	_auxvel_buffer.unallocate();
 }
 
 bool EstimatorInterface::isOnlyActiveSourceOfHorizontalAiding(const bool aiding_flag) const
@@ -602,17 +620,41 @@ void EstimatorInterface::printBufferAllocationFailed(const char *buffer_name)
 
 void EstimatorInterface::print_status()
 {
-	ECL_INFO("local position valid: %s", local_position_is_valid() ? "yes" : "no");
+	ECL_INFO("IMU average dt: %.6f seconds", (double)_dt_imu_avg);
 
 	ECL_INFO("imu buffer: %d (%d Bytes)", _imu_buffer.get_length(), _imu_buffer.get_total_size());
-	ECL_INFO("gps buffer: %d (%d Bytes)", _gps_buffer.get_length(), _gps_buffer.get_total_size());
-	ECL_INFO("mag buffer: %d (%d Bytes)", _mag_buffer.get_length(), _mag_buffer.get_total_size());
-	ECL_INFO("baro buffer: %d (%d Bytes)", _baro_buffer.get_length(), _baro_buffer.get_total_size());
-	ECL_INFO("range buffer: %d (%d Bytes)", _range_buffer.get_length(), _range_buffer.get_total_size());
-	ECL_INFO("airspeed buffer: %d (%d Bytes)", _airspeed_buffer.get_length(), _airspeed_buffer.get_total_size());
-	ECL_INFO("flow buffer: %d (%d Bytes)", _flow_buffer.get_length(), _flow_buffer.get_total_size());
-	ECL_INFO("vision buffer: %d (%d Bytes)", _ext_vision_buffer.get_length(), _ext_vision_buffer.get_total_size());
 	ECL_INFO("output buffer: %d (%d Bytes)", _output_buffer.get_length(), _output_buffer.get_total_size());
 	ECL_INFO("output vert buffer: %d (%d Bytes)", _output_vert_buffer.get_length(), _output_vert_buffer.get_total_size());
-	ECL_INFO("drag buffer: %d (%d Bytes)", _drag_buffer.get_length(), _drag_buffer.get_total_size());
+
+	if (_gps_buffer) {
+		ECL_INFO("gps buffer: %d (%d Bytes)", _gps_buffer->get_length(), _gps_buffer->get_total_size());
+	}
+
+	if (_mag_buffer) {
+		ECL_INFO("mag buffer: %d (%d Bytes)", _mag_buffer->get_length(), _mag_buffer->get_total_size());
+	}
+
+	if (_baro_buffer) {
+		ECL_INFO("baro buffer: %d (%d Bytes)", _baro_buffer->get_length(), _baro_buffer->get_total_size());
+	}
+
+	if (_range_buffer) {
+		ECL_INFO("range buffer: %d (%d Bytes)", _range_buffer->get_length(), _range_buffer->get_total_size());
+	}
+
+	if (_airspeed_buffer) {
+		ECL_INFO("airspeed buffer: %d (%d Bytes)", _airspeed_buffer->get_length(), _airspeed_buffer->get_total_size());
+	}
+
+	if (_flow_buffer) {
+		ECL_INFO("flow buffer: %d (%d Bytes)", _flow_buffer->get_length(), _flow_buffer->get_total_size());
+	}
+
+	if (_ext_vision_buffer) {
+		ECL_INFO("vision buffer: %d (%d Bytes)", _ext_vision_buffer->get_length(), _ext_vision_buffer->get_total_size());
+	}
+
+	if (_drag_buffer) {
+		ECL_INFO("drag buffer: %d (%d Bytes)", _drag_buffer->get_length(), _drag_buffer->get_total_size());
+	}
 }

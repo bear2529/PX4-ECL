@@ -228,7 +228,7 @@ public:
 protected:
 
 	EstimatorInterface() = default;
-	virtual ~EstimatorInterface() = default;
+	virtual ~EstimatorInterface();
 
 	virtual bool init(uint64_t timestamp) = 0;
 
@@ -323,18 +323,19 @@ protected:
 	bool _gps_drift_updated{false};	// true when _gps_drift_metrics has been updated and is ready for retrieval
 
 	// data buffer instances
-	RingBuffer<imuSample> _imu_buffer;
-	RingBuffer<gpsSample> _gps_buffer;
-	RingBuffer<magSample> _mag_buffer;
-	RingBuffer<baroSample> _baro_buffer;
-	RingBuffer<rangeSample> _range_buffer;
-	RingBuffer<airspeedSample> _airspeed_buffer;
-	RingBuffer<flowSample> 	_flow_buffer;
-	RingBuffer<extVisionSample> _ext_vision_buffer;
-	RingBuffer<outputSample> _output_buffer;
-	RingBuffer<outputVert> _output_vert_buffer;
-	RingBuffer<dragSample> _drag_buffer;
-	RingBuffer<auxVelSample> _auxvel_buffer;
+	RingBuffer<imuSample> _imu_buffer{12};
+	RingBuffer<outputSample> _output_buffer{12};
+	RingBuffer<outputVert> _output_vert_buffer{12};
+
+	RingBuffer<gpsSample> *_gps_buffer{nullptr};
+	RingBuffer<magSample> *_mag_buffer{nullptr};
+	RingBuffer<baroSample> *_baro_buffer{nullptr};
+	RingBuffer<rangeSample> *_range_buffer{nullptr};
+	RingBuffer<airspeedSample> *_airspeed_buffer{nullptr};
+	RingBuffer<flowSample> 	*_flow_buffer{nullptr};
+	RingBuffer<extVisionSample> *_ext_vision_buffer{nullptr};
+	RingBuffer<dragSample> *_drag_buffer{nullptr};
+	RingBuffer<auxVelSample> *_auxvel_buffer{nullptr};
 
 	// timestamps of latest in buffer saved measurement in microseconds
 	uint64_t _time_last_imu{0};
@@ -375,9 +376,6 @@ private:
 
 	void printBufferAllocationFailed(const char *buffer_name);
 
-	// free buffer memory
-	void unallocate_buffers();
-
 	ImuDownSampler _imu_down_sampler{FILTER_UPDATE_PERIOD_S};
 
 	unsigned _min_obs_interval_us{0}; // minimum time interval between observations that will guarantee data is not lost (usec)
@@ -403,16 +401,4 @@ private:
 	uint64_t _mag_timestamp_sum{0};
 	Vector3f _mag_data_sum;
 	uint8_t _mag_sample_count{0};
-
-	// observation buffer final allocation failed
-	bool _gps_buffer_fail{false};
-	bool _mag_buffer_fail{false};
-	bool _baro_buffer_fail{false};
-	bool _range_buffer_fail{false};
-	bool _airspeed_buffer_fail{false};
-	bool _flow_buffer_fail{false};
-	bool _ev_buffer_fail{false};
-	bool _drag_buffer_fail{false};
-	bool _auxvel_buffer_fail{false};
-
 };
